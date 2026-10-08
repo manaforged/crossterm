@@ -694,6 +694,17 @@ pub(crate) fn parse_csi_special_key_code(buffer: &[u8]) -> io::Result<Option<Int
         };
 
     let keycode = match first {
+        27 => {
+            let code = next_parsed::<u32>(&mut split)?;
+            match code {
+                13 => KeyCode::Enter,
+                9 if modifiers.contains(KeyModifiers::SHIFT) => KeyCode::BackTab,
+                9 => KeyCode::Tab,
+                27 => KeyCode::Esc,
+                8 | 127 => KeyCode::Backspace,
+                _ => KeyCode::Char(char::from_u32(code).ok_or_else(could_not_parse_event_error)?),
+            }
+        }
         1 | 7 => KeyCode::Home,
         2 => KeyCode::Insert,
         3 => KeyCode::Delete,
@@ -1133,6 +1144,45 @@ mod tests {
         assert_eq!(
             parse_csi_special_key_code(b"\x1B[3~").unwrap(),
             Some(InternalEvent::Event(Event::Key(KeyCode::Delete.into()))),
+        );
+    }
+
+    #[test]
+    fn test_parse_csi_modify_other_keys() {
+        assert_eq!(
+            parse_csi_special_key_code(b"\x1B[27;2;13~").unwrap(),
+            Some(InternalEvent::Event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::SHIFT
+            )))),
+        );
+        assert_eq!(
+            parse_csi_special_key_code(b"\x1B[27;5;106~").unwrap(),
+            Some(InternalEvent::Event(Event::Key(KeyEvent::new(
+                KeyCode::Char('j'),
+                KeyModifiers::CONTROL
+            )))),
+        );
+        assert_eq!(
+            parse_csi_special_key_code(b"\x1B[27;3;13~").unwrap(),
+            Some(InternalEvent::Event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::ALT
+            )))),
+        );
+        assert_eq!(
+            parse_csi_special_key_code(b"\x1B[27;2;9~").unwrap(),
+            Some(InternalEvent::Event(Event::Key(KeyEvent::new(
+                KeyCode::BackTab,
+                KeyModifiers::SHIFT
+            )))),
+        );
+        assert_eq!(
+            parse_event(b"\x1B[27;2;13~", false).unwrap(),
+            Some(InternalEvent::Event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::SHIFT
+            )))),
         );
     }
 
